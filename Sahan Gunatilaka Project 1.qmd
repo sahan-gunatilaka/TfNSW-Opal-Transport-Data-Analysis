@@ -1,0 +1,116 @@
+---
+title: "Sahan Gunatilaka project 1"
+format: html
+editor: visual
+---
+
+## Quarto
+
+Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>.
+
+## Running Code
+
+When you click the **Render** button a document will be generated that includes both content and the output of embedded code. You can embed code like this:
+
+```{r}
+# Loading libraries
+library(tidyverse)
+library(janitor)
+library(skimr)
+library(ggplot2)
+library(viridis)
+library(snakecase)
+library(kableExtra)
+library(gt)
+library(knitr)
+
+#Loading the dataset
+opal <- read_csv("~/Desktop/all-modes-dec-2023.csv")
+theme_set(theme_minimal())
+
+#Opal trips from 2019 to 2023 sub dataset
+opal_2019_2023 <- opal %>%
+# Separating Year and Month into 2 different columns for easy reading
+ separate(Year_Month, into = c( "Year", "Month"), sep = "-") %>%
+clean_names() %>%
+  
+#Renaming columns
+  rename(
+    travel_type = travel_mode,
+    opal_card = card_type,
+    total_trips = trip
+  ) %>%
+  
+  #Converting Year as Numeric and month as a factor
+  mutate(
+    year = as.numeric(year),
+# Abbreviating months    
+    month = factor(month.abb[as.numeric(month)], levels = month.abb)
+  ) %>%
+  filter(year >= 2019 & year <= 2023) 
+
+
+#Catergorising ticket types by demographic
+opal_2019_2023_cleaned <- opal_2019_2023 %>%
+  mutate(
+    # 1. Clean the Travel Types first
+    travel_type = case_when(
+      str_detect(travel_type, "Bus") ~ "Bus",
+      str_detect(travel_type, "Ferry") ~ "Ferry",
+      str_detect(travel_type, "Light rail") ~ "Light rail",
+      str_detect(travel_type, "Train|Metro") ~ "Rail", 
+      TRUE ~ travel_type
+    ),
+    # 2. Continue the mutate for Card Types
+    opal_card = case_when(
+      str_detect(opal_card, "Adult") ~ "Adult",
+      str_detect(opal_card, "Child|Student|Youth|Concession") ~ "Student",
+      str_detect(opal_card, "Senior|Pensioner") ~ "Senior",
+      TRUE ~ "Other"
+    )
+  ) %>%
+  # 3. The "Big Shrink" (Grouping and Summarising)
+  group_by(year, month, travel_type, opal_card) %>%
+  summarise(total_trips = sum(total_trips, na.rm = TRUE), .groups = "drop")
+view(opal_2019_2023_cleaned)
+```
+
+You can add options to executable code like this
+
+```{r}
+#Analysing the subdata set
+opal_2019_2023_analysis <- opal_2019_2023_cleaned %>%
+  group_by(month, travel_type, opal_card) %>%
+  summarise(avg_trip = round(mean(total_trips)), .groups = "drop") %>%
+  # NEW STEP BELOW:
+  group_by(travel_type, opal_card) %>% 
+mutate(pct_of_year = round((avg_trip / sum(avg_trip)) * 100))
+
+
+ opal_2019_2023_analysis %>% 
+   arrange(month)
+```
+
+```{r}
+#Heatmap visualisation
+# CHUNK: Visualisation of Peak Demand
+ggplot(opal_2019_2023_analysis, aes(x = month, y = travel_type, fill = pct_of_year)) +
+  geom_tile(color = "white") +
+  facet_wrap(~opal_card, ncol = 2) +
+  scale_fill_gradient(low = "white", high = "red") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Sydney Transport Seasonality", 
+       fill = "% of Year")
+```
+
+```{r}
+operational_peaks %>%
+  kable(caption = "Top 10 Operational Peaks by Mode and Category", align = "c") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), 
+                full_width = F) %>%
+  # Row 0 is the header
+  row_spec(0, bold = T, color = "white", background = "#002664") %>%
+  # Rows 1 to 10 are the data
+  row_spec(1:10, background = "white", color = "black")
+```
